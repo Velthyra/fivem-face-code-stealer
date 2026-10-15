@@ -139,9 +139,17 @@
               <Button x:Name="UninjectButton" Grid.Column="2" Content="DURDUR" Style="{StaticResource DangerButton}" Height="36" Click="UninjectClick"/>
             </Grid>
 
-            <Border Grid.Row="2" Background="{StaticResource CardAlt}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,6" Margin="0,10,0,0">
-              <TextBlock x:Name="ReaderStatus" Text="○ OKUYUCU YÜKLENMEDİ" Foreground="{StaticResource Muted}" FontSize="11" FontWeight="SemiBold"/>
-            </Border>
+            <Grid Grid.Row="2" Margin="0,10,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="132"/>
+              </Grid.ColumnDefinitions>
+              <Border Background="{StaticResource CardAlt}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,6">
+                <TextBlock x:Name="ReaderStatus" Text="○ OKUYUCU YÜKLENMEDİ" Foreground="{StaticResource Muted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              </Border>
+              <Button Grid.Column="2" x:Name="TagsButton" Content="İSİMLER: KAPALI" Style="{StaticResource SecondaryButton}" Height="32" IsEnabled="False" Click="ToggleTagsClick" ToolTip="40 metre içindeki FiveM kullanıcı adı ve sunucu ID etiketleri"/>
+            </Grid>
 
             <Border Grid.Row="3" Background="{StaticResource AccentSubtle}" BorderBrush="{StaticResource AccentBorder}" BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,10,0,0">
               <TextBlock Text="💡 Sunucu ID boş bırakılırsa doğrudan kendi karakterinizin yüzü okunur." FontSize="11" Foreground="{StaticResource InkDim}" TextWrapping="Wrap"/>
@@ -203,6 +211,7 @@
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -214,7 +223,7 @@
               </Grid.ColumnDefinitions>
               <StackPanel>
                 <TextBlock Text="Karakter Yüz Kodu" FontSize="15" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
-                <TextBlock Text="Oyun içi kuaför / estetik menülerine yapıştırılabilir JSON kodu." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0"/>
+                <TextBlock Text="JSON kodu ve Menyoo yüz XML'i aynı anda kaydedilir." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0"/>
               </StackPanel>
               <Border Grid.Column="1" Background="{StaticResource AccentSubtle}" BorderBrush="{StaticResource AccentBorder}" BorderThickness="1" CornerRadius="9" Padding="12,5" VerticalAlignment="Center">
                 <TextBlock x:Name="SexText" Text="KARAKTER: —" Foreground="{StaticResource Accent}" FontSize="11" FontWeight="Bold"/>
@@ -223,11 +232,16 @@
 
             <Border Grid.Row="1" Height="1" Background="{StaticResource Line}" Margin="0,14,0,12"/>
 
-            <Border Grid.Row="2" Background="{StaticResource CardAlt}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="4">
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
+              <Button x:Name="JsonFormatButton" Content="JSON" Style="{StaticResource PrimaryButton}" Width="90" Height="32" Click="JsonFormatClick"/>
+              <Button x:Name="XmlFormatButton" Content="MENYOO XML" Style="{StaticResource SecondaryButton}" Width="130" Height="32" Margin="8,0,0,0" Click="XmlFormatClick"/>
+            </StackPanel>
+
+            <Border Grid.Row="3" Background="{StaticResource CardAlt}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="4">
               <TextBox x:Name="CodeBox" Text="Yüz kodu oluşturulduğunda burada görünecektir." IsReadOnly="True" TextWrapping="Wrap" VerticalContentAlignment="Top" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" FontFamily="Consolas, Cascadia Code, Courier New" FontSize="12" Foreground="{StaticResource Muted}" Background="Transparent" BorderThickness="0" Padding="10"/>
             </Border>
 
-            <Grid Grid.Row="3" Margin="0,12,0,0">
+            <Grid Grid.Row="4" Margin="0,12,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="10"/>

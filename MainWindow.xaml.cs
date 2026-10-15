@@ -19,8 +19,12 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FaceSt");
     private bool _busy;
     private bool _injected;
+    private bool _tagsOn;
+    private NameTagOverlay? _tagOverlay;
     private string? _lastCode;
+    private string? _lastXml;
     private string? _lastFile;
+    private bool _showXml;
     private readonly System.Windows.Threading.DispatcherTimer _disclaimerTimer = new()
     {
         Interval = TimeSpan.FromMilliseconds(200)
@@ -45,6 +49,7 @@ public partial class MainWindow : Window
             _disclaimerTimer.Start();
         };
         Closed += (_, _) => _disclaimerTimer.Stop();
+        Closing += (_, _) => StopTagsOnExit();
     }
 
     private void UpdateDisclaimerCountdown()
@@ -84,20 +89,25 @@ public partial class MainWindow : Window
         DisclaimerPage.Visibility = Visibility.Collapsed;
         WorkbenchPage.Visibility = Visibility.Visible;
 
+        var readerStatus = "UNLOADED";
         if (GameIsRunning())
         {
             try
             {
                 var runtime = await Task.Run(PrepareRuntime);
-                _injected = await RunCommandAsync(runtime, "--status") == "LOADED";
+                readerStatus = await RunCommandAsync(runtime, "--status");
+                _injected = readerStatus == "LOADED";
             }
             catch { _injected = false; }
         }
 
         UpdateReaderState();
-        SetStatus(_injected
-            ? "Yüz okuyucu FiveM'de aktif. Yakındakileri bulabilir veya ID girip yüz kodunu çıkarabilirsiniz."
-            : "Önce INJECT ile yüz okuyucusunu oyuna yükleyin.", false);
+        if (readerStatus == "INCOMPATIBLE")
+            SetStatus("FiveM'de eski okuyucu yüklü. Oyunu kapatıp yeniden açın; sonra INJECT'e basın.", true);
+        else
+            SetStatus(_injected
+                ? "Yüz okuyucu FiveM'de aktif. Yakındakileri bulabilir veya ID girip yüz kodunu çıkarabilirsiniz."
+                : "Önce INJECT ile yüz okuyucusunu oyuna yükleyin.", false);
     }
 
     private async void InjectClick(object sender, RoutedEventArgs e)
@@ -133,6 +143,7 @@ public partial class MainWindow : Window
         if (!GameIsRunning())
         {
             _injected = false;
+            CloseTagOverlay();
             UpdateReaderState();
             SetStatus("FiveM kapalı. Okuyucu artık oyunda değil.", false);
             return;
@@ -146,6 +157,7 @@ public partial class MainWindow : Window
             var response = await RunCommandAsync(runtime, "--stop");
             if (response != "UNLOADED") throw new InvalidOperationException("Kaldırma doğrulanamadı.");
             _injected = false;
+            CloseTagOverlay();
             SetStatus("Yüz okuyucu FiveM'den başarıyla kaldırıldı.", false);
         }
         catch (Exception ex) { SetStatus(ex.Message, true); }
@@ -156,6 +168,7 @@ public partial class MainWindow : Window
     {
         InjectButton.IsEnabled = UninjectButton.IsEnabled =
             FindButton.IsEnabled = CaptureButton.IsEnabled = false;
+        TagsButton.IsEnabled = false;
     }
 
     private void UpdateReaderState()
@@ -165,6 +178,74 @@ public partial class MainWindow : Window
         InjectButton.IsEnabled = !_injected;
         UninjectButton.IsEnabled = _injected;
         FindButton.IsEnabled = CaptureButton.IsEnabled = _injected;
+        TagsButton.IsEnabled = _injected;
+        TagsButton.Content = _tagsOn ? "İSİMLER: AÇIK" : "İSİMLER: KAPALI";
+        TagsButton.Style = (Style)FindResource(_tagsOn ? "PrimaryButton" : "SecondaryButton");
+    }
+
+    private async void ToggleTagsClick(object sender, RoutedEventArgs e)
+    {
+        if (_busy || !_injected) return;
+        _busy = true;
+        SetBusyButtons();
+        string? runtime = null;
+        var startedTags = false;
+        try
+        {
+            runtime = await Task.Run(PrepareRuntime);
+            var response = await RunCommandAsync(runtime, _tagsOn ? "--tags-off" : "--tags-on");
+            if (response != (_tagsOn ? "TAGS_OFF" : "TAGS_ON"))
+                throw new InvalidOperationException("İsim etiketleri doğrulanamadı.");
+            if (_tagsOn)
+            {
+                CloseTagOverlay();
+                SetStatus("İsim etiketleri kapatıldı.", false);
+            }
+            else
+            {
+                startedTags = true;
+                _tagOverlay = new NameTagOverlay();
+                _tagOverlay.Show();
+                _tagsOn = true;
+                SetStatus("İsim etiketleri açık. FiveM öndeyken görünür.", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (startedTags && runtime is not null)
+            {
+                try { await RunCommandAsync(runtime, "--tags-off"); }
+                catch { }
+                CloseTagOverlay();
+            }
+            SetStatus(ex.Message, true);
+        }
+        finally { _busy = false; UpdateReaderState(); }
+    }
+
+    private void CloseTagOverlay()
+    {
+        _tagOverlay?.Close();
+        _tagOverlay = null;
+        _tagsOn = false;
+    }
+
+    private void StopTagsOnExit()
+    {
+        if (!_tagsOn) return;
+        CloseTagOverlay();
+        try
+        {
+            var runtime = PrepareRuntime();
+            Process.Start(new ProcessStartInfo(Path.Combine(runtime, "FaceCodeInjector.exe"), "--tags-off")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            })?.Dispose();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+        }
     }
 
     private bool CanRead()
@@ -324,14 +405,18 @@ public partial class MainWindow : Window
             }
 
             var code = RinaFaceCode.Convert(raw);
+            var xml = MenyooFaceXml.Convert(raw);
             var codes = Path.Combine(_home, "Codes");
             Directory.CreateDirectory(codes);
             var label = serverId?.ToString() ?? "Kendi";
-            var path = Path.Combine(codes, $"Face-{label}-{DateTime.Now:yyyyMMdd-HHmmss-fff}.json");
+            var basePath = Path.Combine(codes, $"Face-{label}-{DateTime.Now:yyyyMMdd-HHmmss-fff}");
+            var path = basePath + ".json";
             await File.WriteAllTextAsync(path, code, new UTF8Encoding(false));
+            await File.WriteAllTextAsync(basePath + "-Menyoo.xml", xml, new UTF8Encoding(false));
             _lastCode = code;
+            _lastXml = xml;
             _lastFile = path;
-            CodeBox.Text = code;
+            RefreshCodePreview();
 
             using (var parsed = JsonDocument.Parse(code))
                 SexText.Text = "KARAKTER: " + (parsed.RootElement.GetProperty("Sex").GetInt32() == 2 ? "KADIN" : "ERKEK");
@@ -342,7 +427,7 @@ public partial class MainWindow : Window
             try
             {
                 Clipboard.SetText(code);
-                SetStatus("Yüz kodu başarıyla kaydedildi ve panoya kopyalandı.", false);
+                SetStatus("JSON ve Menyoo XML kaydedildi; JSON panoya kopyalandı.", false);
             }
             catch (ExternalException)
             {
@@ -360,12 +445,13 @@ public partial class MainWindow : Window
 
     private async void CopyClick(object sender, RoutedEventArgs e)
     {
-        if (_lastCode is null) return;
+        var content = _showXml ? _lastXml : _lastCode;
+        if (content is null) return;
         try
         {
-            Clipboard.SetText(_lastCode);
+            Clipboard.SetText(content);
             CopyButton.Content = "KOPYALANDI";
-            SetStatus("Kod panoya kopyalandı.", false);
+            SetStatus((_showXml ? "Menyoo XML" : "JSON kodu") + " panoya kopyalandı.", false);
             await Task.Delay(1500);
             CopyButton.Content = "KODU KOPYALA";
         }
@@ -373,6 +459,26 @@ public partial class MainWindow : Window
         {
             SetStatus("Pano şu anda kullanılamıyor.", true);
         }
+    }
+
+    private void JsonFormatClick(object sender, RoutedEventArgs e)
+    {
+        _showXml = false;
+        RefreshCodePreview();
+    }
+
+    private void XmlFormatClick(object sender, RoutedEventArgs e)
+    {
+        _showXml = true;
+        RefreshCodePreview();
+    }
+
+    private void RefreshCodePreview()
+    {
+        CodeBox.Text = (_showXml ? _lastXml : _lastCode) ??
+            "Yüz kodu oluşturulduğunda burada görünecektir.";
+        JsonFormatButton.Style = (Style)FindResource(_showXml ? "SecondaryButton" : "PrimaryButton");
+        XmlFormatButton.Style = (Style)FindResource(_showXml ? "PrimaryButton" : "SecondaryButton");
     }
 
     private void FolderClick(object sender, RoutedEventArgs e)
@@ -407,6 +513,7 @@ public partial class MainWindow : Window
         if (!running && _injected && !_busy)
         {
             _injected = false;
+            CloseTagOverlay();
             UpdateReaderState();
         }
         if (!_busy && WorkbenchPage.Visibility == Visibility.Visible)
